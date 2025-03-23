@@ -5,7 +5,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const sanitizeHtml = require('sanitize-html');
-const sgMail = require('@sendgrid/mail');
 const Seller = require('../models/Seller');
 const Property = require('../models/Property');
 const Payment = require('../models/Payment');
@@ -13,7 +12,6 @@ const { model3dQueue } = require('../index');
 const { states, citiesByState } = require('../utils/locations');
 require('dotenv').config();
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY;
 const EC2_PROCESSOR_URL = process.env.EC2_PROCESSOR_URL;
@@ -58,61 +56,14 @@ router.post('/register', async (req, res) => {
             email: sanitizeHtml(email),
             phone: sanitizeHtml(phone),
             password: await bcrypt.hash(password, await bcrypt.genSalt(10)),
-            confirmationCode: Math.random().toString(36).substring(7),
+            status: 'Active'
         });
         await seller.save();
 
-        const msg = {
-            to: email,
-            from: 'no-reply@yourdomain.com', // Update with your verified sender
-            subject: 'Verify Your Account',
-            text: `Your confirmation code is: ${seller.confirmationCode}`,
-        };
-        await sgMail.send(msg);
-
-        res.status(201).json({ message: 'Seller registered. Check email for code.' });
+        const token = jwt.sign({ _id: seller._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        res.status(201).json({ message: 'Seller registered successfully.', token });
     } catch (error) {
         console.error('Registration error:', error);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
-// Resend confirmation code
-router.post('/resend-code', async (req, res) => {
-    const { email } = req.body;
-    try {
-        const seller = await Seller.findOne({ email });
-        if (!seller || seller.status === 'Active') {
-            return res.status(400).json({ error: 'No pending seller found' });
-        }
-        const msg = {
-            to: email,
-            from: 'no-reply@yourdomain.com',
-            subject: 'Verify Your Account',
-            text: `Your new confirmation code is: ${seller.confirmationCode}`,
-        };
-        await sgMail.send(msg);
-        res.json({ message: 'Code resent. Check email.' });
-    } catch (error) {
-        console.error('Resend code error:', error);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
-// Verify seller
-router.post('/verify', async (req, res) => {
-    const { email, code } = req.body;
-    try {
-        const seller = await Seller.findOne({ email });
-        if (!seller || seller.confirmationCode !== code) {
-            return res.status(400).json({ error: 'Invalid code' });
-        }
-        seller.status = 'Active';
-        await seller.save();
-        const token = jwt.sign({ _id: seller._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        res.json({ token });
-    } catch (error) {
-        console.error('Verify error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -122,7 +73,7 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     try {
         const seller = await Seller.findOne({ email });
-        if (!seller || seller.status !== 'Active' || !(await bcrypt.compare(password, seller.password))) {
+        if (!seller || !(await bcrypt.compare(password, seller.password))) {
             return res.status(400).json({ error: 'Invalid credentials' });
         }
         const token = jwt.sign({ _id: seller._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
