@@ -16,7 +16,6 @@
       "express-rate-limit": "^6.7.0",
       "sanitize-html": "^2.7.0",
       "cloudinary": "^1.30.0",
-      "cors": "^2.8.5",
-      "@sendgrid/mail": "^7.7.0"
+      "cors": "^2.8.5",      
     }
   }
